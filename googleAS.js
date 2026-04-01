@@ -1,0 +1,240 @@
+// ============================================================
+// 장비수요조사 Google Apps Script
+// ============================================================
+// 
+// ★ 설정 방법 (반드시 순서대로):
+//
+// 1. Google Sheets 새로 만들기
+//    - 시트 탭 이름을 「응답」으로 변경 (헤더는 자동 생성됨)
+//
+// 2. 확장 프로그램 → Apps Script 클릭
+//    - 기존 코드를 모두 지우고
+//    - 이 파일의 코드 전체를 복사 → 붙여넣기
+//    - Ctrl+S 저장
+//
+// 3. 배포 → 새 배포
+//    - ⚙️ 톱니바퀴 → 「웹 앱」 선택
+//    - 실행 사용자: 본인
+//    - 액세스 권한: 「모든 사용자」 (Anyone)
+//    - 「배포」 클릭
+//
+// 4. 생성된 URL 복사
+//    - index.html의 GOOGLE_SCRIPT_URL 에 붙여넣기
+//
+// ★ 코드 수정 후 재배포 시:
+//    배포 → 배포 관리 → ✏️ 편집 → 버전: 「새 버전」 → 배포
+//    (새 버전으로 해야 변경사항이 반영됩니다)
+//
+// ============================================================
+
+// 시트에 저장할 열 순서 (key 이름)
+var HEADERS = [
+  'timestamp',
+  'consent1', 'consent2',
+  'name', 'company', 'phone', 'email',
+  'org_type', 'org_type_other',
+  'industry', 'industry_other',
+  'q1',
+  'q2_sils', 'q2_hils', 'q2_rils',
+  'q3', 'q3_other',
+  'q4_1', 'q4_2', 'q4_3',
+  'q5_1', 'q5_2', 'q5_3',
+  'q6_1', 'q6_1_other',
+  'q6_2', 'q6_2_other',
+  'q6_3', 'q6_3_other',
+  'q7_1', 'q7_2', 'q7_3',
+  'q8_1', 'q8_2', 'q8_3',
+  'q9',
+  'q10_1_count', 'q10_1_hours',
+  'q10_2_count', 'q10_2_hours',
+  'q10_3_count', 'q10_3_hours',
+  'q11_1', 'q11_2', 'q11_3',
+  'q12_1', 'q12_1_other',
+  'q12_2', 'q12_2_other',
+  'q12_3', 'q12_3_other',
+  'q13'
+];
+
+// 시트 첫 행에 표시할 한글 헤더
+var HEADER_LABELS = [
+  '제출일시',
+  '개인정보동의1', '개인정보동의2',
+  '이름', '기업명', '전화번호', '이메일',
+  '기관구분', '기관구분_기타',
+  '업종', '업종_기타',
+  'Q1_특구사업자여부',
+  'Q2_SILS', 'Q2_HILS', 'Q2_RILS',
+  'Q3_기술장벽', 'Q3_기타',
+  'Q4_장비1인지', 'Q4_장비2인지', 'Q4_장비3인지',
+  'Q5_장비1경험', 'Q5_장비2경험', 'Q5_장비3경험',
+  'Q6_장비1애로', 'Q6_장비1기타',
+  'Q6_장비2애로', 'Q6_장비2기타',
+  'Q6_장비3애로', 'Q6_장비3기타',
+  'Q7_장비1구축필요', 'Q7_장비2구축필요', 'Q7_장비3구축필요',
+  'Q8_장비1활용의사', 'Q8_장비2활용의사', 'Q8_장비3활용의사',
+  'Q9_활용용도',
+  'Q10_장비1_횟수', 'Q10_장비1_시간',
+  'Q10_장비2_횟수', 'Q10_장비2_시간',
+  'Q10_장비3_횟수', 'Q10_장비3_시간',
+  'Q11_장비1공동활용', 'Q11_장비2공동활용', 'Q11_장비3공동활용',
+  'Q12_장비1중점분야', 'Q12_장비1기타',
+  'Q12_장비2중점분야', 'Q12_장비2기타',
+  'Q12_장비3중점분야', 'Q12_장비3기타',
+  'Q13_기타의견'
+];
+
+/**
+ * POST 요청 처리 — 설문 응답을 시트에 저장
+ * 
+ * ★ form POST (application/x-www-form-urlencoded) 방식으로 수신
+ *   - 각 필드가 e.parameter 에 key-value로 들어옴
+ *   - JSON POST의 경우도 호환 처리
+ */
+function doPost(e) {
+  try {
+    var sheet = getOrCreateSheet();
+    var data = {};
+
+    // ── 데이터 파싱 ──
+    // Case 1: form POST (가장 안정적인 방식)
+    if (e.parameter && Object.keys(e.parameter).length > 0) {
+      data = e.parameter;
+    }
+    // Case 2: JSON POST (fetch + application/json)
+    else if (e.postData && e.postData.contents) {
+      try {
+        data = JSON.parse(e.postData.contents);
+      } catch (jsonErr) {
+        // JSON 파싱 실패 시 form-urlencoded로 시도
+        var pairs = e.postData.contents.split('&');
+        for (var i = 0; i < pairs.length; i++) {
+          var kv = pairs[i].split('=');
+          if (kv.length === 2) {
+            data[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1].replace(/\+/g, ' '));
+          }
+        }
+      }
+    }
+
+    // 데이터가 비어있으면 에러
+    if (!data || Object.keys(data).length === 0) {
+      return makeResponse({ result: 'error', message: 'No data received' });
+    }
+
+    // ── 헤더 순서에 맞춰 행 데이터 생성 ──
+    var row = HEADERS.map(function(key) {
+      return data[key] || '';
+    });
+
+    // ── 시트에 행 추가 ──
+    sheet.appendRow(row);
+
+    return makeResponse({
+      result: 'success',
+      row: sheet.getLastRow(),
+      message: '응답이 저장되었습니다.'
+    });
+
+  } catch (error) {
+    return makeResponse({
+      result: 'error',
+      message: error.toString()
+    });
+  }
+}
+
+/**
+ * GET 요청 처리 — 연동 테스트용
+ * 브라우저에서 배포 URL을 열면 연결 상태 확인 가능
+ */
+function doGet(e) {
+  // GET 파라미터로 데이터가 들어오는 경우도 처리 (JSONP 방식 대체)
+  if (e.parameter && e.parameter.data) {
+    try {
+      var data = JSON.parse(e.parameter.data);
+      var sheet = getOrCreateSheet();
+      var row = HEADERS.map(function(key) {
+        return data[key] || '';
+      });
+      sheet.appendRow(row);
+      
+      var callback = e.parameter.callback || 'callback';
+      return ContentService
+        .createTextOutput(callback + '(' + JSON.stringify({ result: 'success' }) + ')')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    } catch (err) {
+      return makeResponse({ result: 'error', message: err.toString() });
+    }
+  }
+
+  return makeResponse({
+    status: 'ok',
+    message: '장비수요조사 Google Sheets 연동이 정상 작동 중입니다.',
+    timestamp: new Date().toLocaleString('ko-KR'),
+    headers: HEADER_LABELS
+  });
+}
+
+/**
+ * 「응답」 시트 가져오기 (없으면 자동 생성)
+ */
+function getOrCreateSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('응답');
+
+  if (!sheet) {
+    sheet = ss.insertSheet('응답');
+  }
+
+  // 첫 행이 비어있으면 헤더 삽입
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, HEADER_LABELS.length).setValues([HEADER_LABELS]);
+    var headerRange = sheet.getRange(1, 1, 1, HEADER_LABELS.length);
+    headerRange.setFontWeight('bold');
+    headerRange.setBackground('#1565E8');
+    headerRange.setFontColor('#FFFFFF');
+    headerRange.setHorizontalAlignment('center');
+    sheet.setFrozenRows(1);
+    
+    // 열 너비 자동 조정
+    for (var i = 1; i <= HEADER_LABELS.length; i++) {
+      sheet.setColumnWidth(i, 120);
+    }
+  }
+
+  return sheet;
+}
+
+/**
+ * JSON 응답 생성 헬퍼
+ */
+function makeResponse(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * 테스트 함수 — Apps Script 편집기에서 직접 실행하여 동작 확인
+ * (실행 → testDoPost 선택 → 실행)
+ */
+function testDoPost() {
+  var testEvent = {
+    parameter: {
+      timestamp: new Date().toLocaleString('ko-KR'),
+      consent1: '동의함',
+      consent2: '동의함',
+      name: '테스트',
+      company: '테스트기업',
+      phone: '010-1234-5678',
+      email: 'test@test.com',
+      org_type: '중소기업/스타트업',
+      industry: '로봇제조',
+      q1: '해당없음'
+    },
+    postData: null
+  };
+
+  var result = doPost(testEvent);
+  Logger.log(result.getContent());
+}
