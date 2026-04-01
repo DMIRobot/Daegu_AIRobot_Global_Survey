@@ -823,6 +823,27 @@
     }
     .usage-row .text-input::placeholder { font-size: 11px; }
     .likert { min-width: 520px; }
+
+    /* 모바일에서는 EQUIPMENT를 스크롤 상단 고정 상태로 만들지 않음 */
+    .equip-widget,
+    .equip-widget.fixed {
+      position: static !important;
+      top: auto !important;
+      left: auto !important;
+      right: auto !important;
+      width: auto !important;
+      margin: 0 !important;
+      box-shadow: none !important;
+      background: rgba(12,26,46,0.95) !important;
+      backdrop-filter: none !important;
+    }
+
+    .equip-strip {
+      margin: 0 !important;
+      border-radius: 0 !important;
+      transform: none !important;
+      opacity: 1 !important;
+    }
   }
 </style>
 </head>
@@ -1317,8 +1338,12 @@ const equipToggleBtn = document.getElementById('equipToggle');
 const equipPlaceholder = document.createElement('div');
 let equipTop = null;
 
+function isMobileView() {
+  return window.matchMedia('(max-width: 600px)').matches;
+}
+
 function setEquipFixed() {
-  if (!equipWidget) return;
+  if (!equipWidget || isMobileView()) return;
   equipWidget.classList.add('fixed');
   equipWidget.style.position = '';
   equipWidget.style.top = '';
@@ -1348,6 +1373,11 @@ function updateEquipTop() {
   equipTop = rect.top + window.scrollY;
   equipPlaceholder.style.height = `${rect.height}px`;
   equipPlaceholder.style.display = 'none';
+
+  if (isMobileView()) {
+    setEquipNormal();
+    return;
+  }
 
   if (wasFixed) {
     const threshold = Math.max(equipTop, 48);
@@ -1388,6 +1418,11 @@ window.addEventListener('scroll', () => {
   document.getElementById('progressFill').style.width = pct + '%';
 
   if (!equipWidget || !equipStrip || equipTop === null) return;
+  if (isMobileView()) {
+    setEquipNormal();
+    return;
+  }
+
   const threshold = Math.max(equipTop, 48);
 
   if (window.scrollY >= threshold) {
