@@ -1242,7 +1242,7 @@
 
   <!-- Submit -->
   <div class="submit-area">
-    <button class="btn-submit" id="submitBtn" onclick="handleSubmit()">
+    <button type="button" class="btn-submit" id="submitBtn" onclick="handleSubmit()">
       <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
       <span class="btn-text">설문 제출하기</span>
       <span class="btn-loading"><span class="spinner"></span> 제출 중...</span>
@@ -1463,6 +1463,12 @@ function validate() {
   const c1 = document.querySelector('input[name="consent1"]:checked');
   if (!c1 || c1.value !== '동의함') {
     document.querySelector('input[name="consent1"]').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return false;
+  }
+
+  const c2 = document.querySelector('input[name="consent2"]:checked');
+  if (!c2 || c2.value !== '동의함') {
+    document.querySelector('input[name="consent2"]').scrollIntoView({ behavior: 'smooth', block: 'center' });
     return false;
   }
 
